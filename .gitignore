@@ -1,0 +1,24 @@
+# Executables
+*.exe
+*.out
+*.app
+
+# Object and library files
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dll
+
+# Build directories
+build/
+bin/
+obj/
+
+# Temporary and editor files
+.vscode/
+.idea/
+*.swp
+*~
+*.log

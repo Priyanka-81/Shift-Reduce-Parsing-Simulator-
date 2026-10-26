@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shift-Reduce Parser — Compiler Design Simulator</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- 1. Compact Header -->
+    <header class="app-header">
+        <div class="header-brand">
+            <span class="app-title">Shift-Reduce Parser</span>
+            <span class="app-subtitle">Compiler Design Simulator [SLR(1)]</span>
+        </div>
+        <div class="header-controls">
+            <button id="btnHeaderReset" class="btn-top" onclick="handleReset()">Reset</button>
+            <button id="btnHeaderHelp" class="btn-top" onclick="openHelpModal()">Help</button>
+        </div>
+    </header>
+
+    <!-- 2. Main One-Screen Workspace (Height: 100vh - Header) -->
+    <main class="app-workspace">
+        <!-- LEFT PANEL: Grammar & Controls -->
+        <aside class="panel left-panel">
+            <div class="field-group">
+                <label for="presetSelect" class="label">Sample Grammar</label>
+                <select id="presetSelect" class="input-select" onchange="loadPreset(this.value)">
+                    <option value="expr">Arithmetic: E -> E + T | T, T -> T * F | F, F -> ( E ) | id</option>
+                    <option value="sample">Classic: S -> C C, C -> c C | d</option>
+                    <option value="paren">Parenthesized: E -> ( E ) | id</option>
+                    <option value="repeat">Repetition: S -> a S b | a b</option>
+                </select>
+            </div>
+
+            <div class="field-group flex-grow">
+                <label for="grammarInput" class="label">
+                    <span>Grammar Rules</span>
+                    <span class="label-hint">LHS -&gt; RHS1 | RHS2</span>
+                </label>
+                <textarea id="grammarInput" class="input-textarea" spellcheck="false">E -> E + T | T
+T -> T * F | F
+F -> ( E ) | id</textarea>
+            </div>
+
+            <div class="field-row">
+                <div class="field-group field-grow-2">
+                    <label for="tokenInput" class="label">Input String</label>
+                    <input type="text" id="tokenInput" class="input-text" value="( id * id )" spellcheck="false" placeholder="e.g. ( id * id )">
+                </div>
+                <div class="field-group field-grow-1">
+                    <label for="startSymbolInput" class="label">Start Sym</label>
+                    <input type="text" id="startSymbolInput" class="input-text" value="E" spellcheck="false" placeholder="Auto">
+                </div>
+            </div>
+
+            <!-- Primary Actions -->
+            <div class="actions-grid">
+                <button id="btnRunComplete" class="btn btn-primary" onclick="handleRunComplete()">Run Complete</button>
+                <button id="btnStepByStep" class="btn" onclick="handleStartStep()">Step-by-Step</button>
+            </div>
+
+            <!-- Workflow Simulation Section -->
+            <div class="workflow-box">
+                <div class="workflow-controls-row">
+                    <button id="btnSimulateWorkflow" class="btn btn-simulate" onclick="handleToggleSimulateWorkflow()">▶ Simulate Workflow</button>
+                    <button id="btnStopWorkflow" class="btn btn-stop" onclick="handleStopWorkflow()" style="display: none;">■ Stop</button>
+                </div>
+                <div class="speed-row">
+                    <span class="speed-label">Speed:</span>
+                    <select id="simSpeedSelect" class="speed-select" onchange="handleSpeedChange()">
+                        <option value="1200">Slow (1.2s)</option>
+                        <option value="700" selected>Normal (0.7s)</option>
+                        <option value="350">Fast (0.35s)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Step-by-Step Mini Controls -->
+            <div id="stepControlsBar" class="step-controls-bar" style="display: none;">
+                <span id="stepCounterBadge" class="step-badge">Step 1/14</span>
+                <div class="step-btn-group">
+                    <button id="btnPrevStep" class="btn-mini" onclick="handlePrevStep()">← Prev</button>
+                    <button id="btnNextStep" class="btn-mini" onclick="handleNextStep()">Next →</button>
+                    <button id="btnFinishStep" class="btn-mini" onclick="handleFinishAll()">Finish</button>
+                </div>
+            </div>
+
+            <!-- Secondary Actions -->
+            <div class="bottom-actions-row">
+                <button id="btnRunTests" class="btn btn-secondary" onclick="openTestsModal()">Run Tests (13)</button>
+                <button id="btnResetAll" class="btn btn-secondary" onclick="handleReset()">Reset</button>
+            </div>
+
+            <!-- Grammar Metadata / Conflicts Summary -->
+            <div class="grammar-info-box" id="grammarInfoBox">
+                <div id="grammarStatusLine">Grammar: 6 rules, SLR(1) Verified (0 conflicts)</div>
+            </div>
+        </aside>
+
+        <!-- RIGHT PANEL: Simulation Workspace -->
+        <section class="panel right-panel">
+            <!-- Workspace Top Bar: Status, Current Action, Lookahead -->
+            <div class="workspace-header">
+                <div class="status-indicator-group">
+                    <span class="indicator-label">PARSER STATUS:</span>
+                    <span id="statusBanner" class="status-tag status-ready">READY</span>
+                </div>
+                <div class="status-indicator-group">
+                    <span class="indicator-label">CURRENT ACTION:</span>
+                    <span id="actionBanner" class="action-tag action-idle">NONE</span>
+                </div>
+                <div class="status-indicator-group">
+                    <span class="indicator-label">STEP:</span>
+                    <span id="stepIndicatorText" class="mono-value">0 / 0</span>
+                </div>
+            </div>
+
+            <!-- Visual Representation: Live Stack & Input Buffer -->
+            <div class="live-visualizer-container">
+                <!-- Stack Row -->
+                <div class="visual-row">
+                    <span class="row-label">STACK:</span>
+                    <div id="stackContainer" class="stack-track">
+                        <div class="stack-block stack-bottom">$</div>
+                    </div>
+                </div>
+
+                <!-- Input Stream Row -->
+                <div class="visual-row">
+                    <span class="row-label">INPUT:</span>
+                    <div id="inputTokensTrack" class="tokens-track">
+                        <span class="token-item">(</span>
+                        <span class="token-item">id</span>
+                        <span class="token-item">*</span>
+                        <span class="token-item">id</span>
+                        <span class="token-item">)</span>
+                        <span class="token-item token-end">$</span>
+                    </div>
+                </div>
+
+                <!-- Detailed Explanation Line -->
+                <div class="visual-row explanation-row">
+                    <span class="row-label">DETAIL:</span>
+                    <div id="explanationText" class="explanation-content">
+                        Simulator ready. Choose a sample or enter a grammar, then click "Run Complete" or "Simulate Workflow".
+                    </div>
+                </div>
+            </div>
+
+            <!-- Parsing Trace Table Header -->
+            <div class="trace-header">
+                <span class="trace-title">PARSING TRACE TABLE</span>
+                <span id="traceSummaryText" class="trace-meta">0 steps recorded</span>
+            </div>
+
+            <!-- Parsing Trace Table (Internal Scroll Area ONLY) -->
+            <div class="trace-scroll-area">
+                <table class="trace-table" id="traceTable">
+                    <thead>
+                        <tr>
+                            <th style="width: 55px;">STEP</th>
+                            <th style="width: 220px;">STACK</th>
+                            <th style="width: 180px;">REMAINING INPUT</th>
+                            <th style="width: 200px;">ACTION</th>
+                            <th>EXPLANATION</th>
+                        </tr>
+                    </thead>
+                    <tbody id="traceTableBody">
+                        <tr>
+                            <td colspan="5" class="empty-trace-cell">No trace loaded. Click "Run Complete" or "Simulate Workflow" to start.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <!-- Help Modal (Plain Black & White) -->
+    <div id="helpModal" class="modal-overlay" style="display: none;" onclick="closeHelpModal(event)">
+        <div class="modal-box" onclick="event.stopPropagation()">
+            <div class="modal-title-bar">
+                <span class="modal-title">Help &amp; Shift-Reduce Principles</span>
+                <button class="modal-close" onclick="closeHelpModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <h4>Core Concept</h4>
+                <p>Shift-Reduce parsing is a bottom-up syntax analysis method. It uses a stack to hold grammar symbols and reads input tokens sequentially from left to right, reducing handles back up to the start symbol.</p>
+
+                <h4>The Four Parsing Actions</h4>
+                <ul>
+                    <li><strong>SHIFT:</strong> Reads the next input token and pushes it onto the stack.</li>
+                    <li><strong>REDUCE:</strong> Replaces a matching RHS suffix on the stack with the LHS nonterminal according to an active grammar rule.</li>
+                    <li><strong>ACCEPT:</strong> Halts successfully when the stack contains only the start symbol above <code>$</code> and input is exhausted (<code>$</code>).</li>
+                    <li><strong>ERROR:</strong> Occurs when no valid transition exists in the SLR(1) parsing table for the current state and lookahead token.</li>
+                </ul>
+
+                <h4>Simulator Controls</h4>
+                <ul>
+                    <li><strong>Run Complete:</strong> Evaluates the grammar and displays the full trace table instantly.</li>
+                    <li><strong>Step-by-Step:</strong> Initializes the parser and allows manual progression using the Next button.</li>
+                    <li><strong>Simulate Workflow:</strong> Automatically animates the parsing progression step-by-step with play/pause/stop controls.</li>
+                    <li><strong>Run Tests:</strong> Executes the 13 verification test cases to confirm parser correctness.</li>
+                </ul>
+
+                <h4>Notes on Grammar Format</h4>
+                <p>Separate grammar symbols with spaces (e.g. <code>E -> E + T | T</code>). <code>$</code> is reserved as the end marker. The browser frontend runs a verified client-side SLR(1) parser matching the Python terminal engine (<code>shift_reduce.py</code>).</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="closeHelpModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Test Suite Modal (Plain Black & White) -->
+    <div id="testsModal" class="modal-overlay" style="display: none;" onclick="closeTestsModal(event)">
+        <div class="modal-box modal-wide" onclick="event.stopPropagation()">
+            <div class="modal-title-bar">
+                <span class="modal-title">Automated Verification Suite (13 Tests)</span>
+                <button class="modal-close" onclick="closeTestsModal()">&times;</button>
+            </div>
+            <div class="modal-toolbar">
+                <button class="btn btn-primary btn-sm" onclick="runAutomatedTests()">Re-run All Tests</button>
+                <span id="testsSummaryText" class="tests-summary">Ready to run verification.</span>
+            </div>
+            <div class="modal-body modal-table-scroll">
+                <table class="trace-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 40px;">#</th>
+                            <th>TEST NAME</th>
+                            <th>INPUT</th>
+                            <th style="width: 80px;">EXPECTED</th>
+                            <th style="width: 80px;">ACTUAL</th>
+                            <th style="width: 80px;">STATUS</th>
+                        </tr>
+                    </thead>
+                    <tbody id="testsTableBody">
+                        <tr>
+                            <td colspan="6" class="empty-trace-cell">Loading test suite...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="closeTestsModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Controller -->
+    <script src="app.js"></script>
+</body>
+</html>
